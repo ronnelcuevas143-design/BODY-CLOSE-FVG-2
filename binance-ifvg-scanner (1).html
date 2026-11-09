@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Binance iFVG Short Scanner</title>
+<style>
+:root{--bg:#0d1117;--card:#161b22;--line:#262d36;--tx:#e6edf3;--mu:#8b949e;--red:#f85149;--yel:#d29922;--blu:#58a6ff;--grn:#3fb950}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--tx);font:14px/1.4 system-ui,-apple-system,sans-serif;padding:12px;padding-top:max(12px,env(safe-area-inset-top));padding-bottom:max(12px,env(safe-area-inset-bottom))}
+h1{font-size:17px;margin:0 0 2px}
+.sub{color:var(--mu);font-size:12px;margin-bottom:10px}
+.panel{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px;margin-bottom:10px}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px}
+.row:last-child{margin-bottom:0}
+label{font-size:12px;color:var(--mu);display:flex;flex-direction:column;gap:3px;flex:1;min-width:90px}
+select,input{background:var(--bg);color:var(--tx);border:1px solid var(--line);border-radius:6px;padding:7px;font-size:14px;width:100%}
+button{background:var(--blu);color:#04111f;border:0;border-radius:8px;padding:10px 14px;font-weight:700;font-size:14px}
+button:disabled{opacity:.5}
+.chk{flex-direction:row;align-items:center;gap:6px;color:var(--tx);min-width:auto;flex:none}
+.chk input{width:auto}
+.bar{height:5px;background:var(--line);border-radius:3px;overflow:hidden}
+.bar>i{display:block;height:100%;width:0;background:var(--blu);transition:width .2s}
+.st{font-size:12px;color:var(--mu);margin-top:6px}
+.tabs{display:flex;gap:6px;margin-bottom:10px;overflow-x:auto}
+.tab{background:var(--card);border:1px solid var(--line);color:var(--tx);padding:7px 12px;border-radius:20px;white-space:nowrap;font-weight:600;font-size:13px}
+.tab.on{border-color:var(--blu);color:var(--blu)}
+.item{background:var(--card);border:1px solid var(--line);border-left:4px solid var(--mu);border-radius:10px;padding:10px;margin-bottom:8px}
+.item.c{border-left-color:var(--red)}.item.d{border-left-color:var(--yel)}.item.w{border-left-color:var(--blu)}
+.top{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
+.sym{font-weight:700;font-size:15px;color:var(--tx);text-decoration:none}
+.badge{font-size:11px;font-weight:700;padding:3px 8px;border-radius:12px}
+.badge.c{background:rgba(248,81,73,.15);color:var(--red)}
+.badge.d{background:rgba(210,153,34,.15);color:var(--yel)}
+.badge.w{background:rgba(88,166,255,.15);color:var(--blu)}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:4px 12px;font-size:12px}
+.grid span{color:var(--mu)}
+.grid b{font-weight:600;float:right}
+.note{font-size:12px;color:var(--mu);margin-top:6px}
+.links{display:flex;gap:8px;margin-top:8px}
+.links a{flex:1;text-align:center;padding:8px;border-radius:8px;border:1px solid var(--line);color:var(--blu);text-decoration:none;font-weight:600;font-size:13px}
+.links a.tv{background:var(--blu);color:#04111f;border-color:var(--blu)}
+.empty{text-align:center;color:var(--mu);padding:24px 0}
+</style>
+</head>
+<body>
+<h1>Binance iFVG Short Scanner</h1>
+<div class="sub">5m • Futures USDT perpetuals • Daily bias → 5m Swing High break + FVG → iFVG</div>
+
+<div class="panel">
+  <div class="row">
+    <label>Coins
+      <select id="top"><option value="0">Lahat</option><option value="100">Top 100 (volume)</option><option value="200">Top 200</option><option value="300">Top 300</option></select>
+    </label>
+    <label>Swing strength
+      <select id="L"><option>2</option><option selected>3</option><option>4</option><option>5</option></select>
+    </label>
+    <label>Break by
+      <select id="brk"><option value="wick">Wick (high)</option><option value="close">Close</option></select>
+    </label>
+  </div>
+  <div class="row">
+    <label>Min 24h volume (USDT)
+      <select id="minVol"><option value="0">Walang filter</option><option value="10000000">10M</option><option value="30000000">30M</option><option value="50000000" selected>50M</option><option value="100000000">100M</option></select>
+    </label>
+  </div>
+  <div class="row">
+    <label>Developing range %
+      <input id="prox" type="number" step="0.05" value="0.30">
+    </label>
+    <label>Max age (candles)
+      <input id="maxAge" type="number" value="48">
+    </label>
+    <label>Confirmed valid (candles)
+      <input id="confAge" type="number" value="6">
+    </label>
+  </div>
+  <div class="row">
+    <label class="chk"><input type="checkbox" id="reqB" checked> Short lang kung Daily bearish</label>
+  </div>
+  <div class="row">
+    <label class="chk"><input type="checkbox" id="auto" checked> Auto-scan kada 5m close</label>
+    <label class="chk"><input type="checkbox" id="alert" checked> Alert (beep/vibrate)</label>
+  </div>
+  <div class="row"><button id="go">Scan</button></div>
+  <div class="bar"><i id="pg"></i></div>
+  <div class="st" id="st">Ready.</div>
+</div>
+
+<div class="tabs" id="tabs">
+  <button class="tab on" data-f="all">All</button>
+  <button class="tab" data-f="c">Confirmed</button>
+  <button class="tab" data-f="d">Developing</button>
+  <button class="tab" data-f="w">Watching</button>
+</div>
+<div id="list"><div class="empty">Pindutin ang Scan.</div></div>
+
+<script>
+const F='https://fapi.binance.com/fapi/v1';
+const $=id=>document.getElementById(id);
+let results=[],prevKeys=new Set(),filter='all',scanning=false,autoTimer=null,firstRun=true;
+
+/* ---------- settings ---------- */
+const IDS=['top','L','brk','prox','maxAge','confAge','minVol'];
+try{const s=JSON.parse(localStorage.getItem('mexc_ifvg')||'{}');IDS.forEach(k=>{if(s[k]!=null)$(k).value=s[k]});
+ if(s.auto!=null)$('auto').checked=s.auto;if(s.alert!=null)$('alert').checked=s.alert;if(s.reqB!=null)$('reqB').checked=s.reqB}catch(e){}
+function save(){try{const s={auto:$('auto').checked,alert:$('alert').checked,reqB:$('reqB').checked};IDS.forEach(k=>s[k]=$(k).value);localStorage.setItem('mexc_ifvg',JSON.stringify(s))}catch(e){}}
+
+/* ---------- api (Binance USDT-M futures) ---------- */
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+async function jget(u,retry=2){
+  const r=await fetch(u);
+  if((r.status===429||r.status===418)&&retry>0){await sleep(2000);return jget(u,retry-1)}
+  if(!r.ok)throw new Error('HTTP '+r.status);
+  return r.json();
+}
+async function getSymbols(){
+  const [info,tk]=await Promise.all([jget(F+'/exchangeInfo'),jget(F+'/ticker/24hr')]);
+  const vol={};tk.forEach(x=>vol[x.symbol]=+x.quoteVolume||0);
+  let list=info.symbols
+    .filter(x=>x.contractType==='PERPETUAL'&&x.quoteAsset==='USDT'&&x.status==='TRADING')
+    .map(x=>({s:x.symbol,v:vol[x.symbol]||0}))
+    .filter(x=>x.v>=(+$('minVol').value||0));
+  list.sort((a,b)=>b.v-a.v);
+  const lim=+$('top').value;if(lim>0)list=list.slice(0,lim);
+  return list.map(x=>x.s);
+}
+async function getKlines(sym,iv='5m',cnt=220){
+  const j=await jget(`${F}/klines?symbol=${sym}&interval=${iv}&limit=${cnt}`);
+  return j.map(x=>({t:Math.floor(x[0]/1000),o:+x[1],h:+x[2],l:+x[3],c:+x[4],v:+x[5]}));
+}
+
+/* ---------- skip "putol-putol" charts: too many flat / zero-volume 5m candles ---------- */
+function choppy(k){
+  if(!k||k.length<30)return false;
+  const c=k.slice(-101,-1);
+  let flat=0;c.forEach(x=>{if(x.h===x.l||x.v===0)flat++});
+  return flat/c.length>0.05;
+}
+
+/* ---------- strategy ---------- */
+function analyze(k,cfg){
+  if(!k||k.length<30)return null;
+  const live=k[k.length-1];           // forming candle
+  const c=k.slice(0,-1);              // closed candles only
+  const n=c.length,L=cfg.L;
+  let piv=[],setup=null;
+
+  for(let i=1;i<n;i++){
+    // confirm swing high at p = i-L (needs L candles to the right)
+    const p=i-L;
+    if(p>=L){
+      let ok=true;
+      for(let q=p-L;q<=p+L;q++){if(q!==p&&c[q].h>=c[p].h){ok=false;break}}
+      if(ok)piv.push({i:p,h:c[p].h});
+    }
+    // did candle i break any recent swing high?
+    const val=cfg.brk==='close'?c[i].c:c[i].h;
+    const broken=piv.filter(x=>val>x.h);
+    if(!broken.length)continue;
+    piv=piv.filter(x=>val<=x.h);
+    // breaking candle (i) must own a bullish FVG: high[i-1] < low[i+1]
+    if(i+1<n&&c[i+1].l>c[i-1].h){
+      const sw=broken[broken.length-1];
+      setup={i,lvl:sw.h,swI:sw.i,bot:c[i-1].h,top:c[i+1].l};
+    }
+  }
+  if(!setup)return null;
+
+  const fvgDone=setup.i+1;
+  let conf=null;
+  for(let j=fvgDone+1;j<n;j++){
+    if(c[j].c<setup.bot){conf=j;break}
+  }
+  const price=live.c;
+  let stage,note='';
+
+  if(conf!==null){
+    const ago=n-1-conf;
+    if(ago>cfg.confAge)return null;
+    for(let j=conf+1;j<n;j++){if(c[j].c>setup.top)return null} // iFVG failed
+    if(price>setup.top)return null;
+    stage='c';note=`iFVG confirmed ${ago===0?'sa huling closed candle':ago+' candle(s) ago'} — close below FVG`;
+  }else{
+    if(n-1-fvgDone>cfg.maxAge)return null;
+    const dist=(price-setup.top)/price*100;
+    if(price<setup.bot){stage='d';note='Price nasa ibaba na ng FVG — hinihintay ang 5m close below'}
+    else if(price<=setup.top){stage='d';note='Nasa loob ng FVG — malapit na mag-iFVG'}
+    else if(dist<=cfg.prox){stage='d';note='Papalapit sa FVG'}
+    else{stage='w';note='May FVG na, malayo pa ang price'}
+  }
+
+  const endIdx=conf!==null?conf:n-1;
+  let sl=Math.max(live.h,...c.slice(setup.i,endIdx+1).map(x=>x.h));
+  const entry=conf!==null?c[conf].c:null;
+  const h=setup.top-setup.bot;
+  return{
+    stage,note,price,bot:setup.bot,top:setup.top,lvl:setup.lvl,sl,entry,
+    depth:price<setup.bot?100:price>setup.top?0:(setup.top-price)/h*100,
+    dist:(price-setup.top)/price*100,
+    breakT:c[setup.i].t,confT:conf!==null?c[conf].t:null,setupI:setup.i,
+    tp:null
+  };
+}
+
+/* ---------- Daily bias: last closed daily body-close vs previous daily candle ---------- */
+function dailyBias(k){
+  if(!k||k.length<3)return null;
+  const c=k.slice(0,-1);              // closed dailies only
+  if(c.length<2)return null;
+  const a=c[c.length-1],b=c[c.length-2];
+  if(a.c<b.l)return 'bear';
+  if(a.c>b.h)return 'bull';
+  return 'neutral';
+}
+const BL={bear:'Bearish',bull:'Bullish',neutral:'Neutral'},BC={bear:'var(--red)',bull:'var(--grn)',neutral:'var(--mu)'};
+
+/* ---------- scan ---------- */
+async function scan(){
+  if(scanning)return;
+  scanning=true;$('go').disabled=true;save();
+  const cfg={L:+$('L').value,brk:$('brk').value,prox:+$('prox').value,maxAge:+$('maxAge').value,confAge:+$('confAge').value,reqB:$('reqB').checked};
+  const out=[];let done=0,err=0,skipped=0;
+  try{
+    $('st').textContent='Kinukuha ang Binance futures list…';
+    const syms=await getSymbols();
+    let idx=0;
+    const worker=async()=>{
+      while(idx<syms.length){
+        const s=syms[idx++];
+        try{
+          const k=await getKlines(s);
+          const ch=choppy(k);if(ch)skipped++;
+          const r=ch?null:analyze(k,cfg);
+          if(r){
+            r.sym=s;
+            let dk=null;
+            try{await sleep(300);dk=await getKlines(s,'1d',6)}catch(e){}
+            r.bias=dailyBias(dk);
+            const ref=r.entry||r.price;
+            r.tp=ref-4*(r.sl-ref);            // 1:4
+            if(!(cfg.reqB&&r.bias!=='bear'))out.push(r);
+          }
+        }catch(e){err++}
+        done++;
+        $('pg').style.width=(done/syms.length*100)+'%';
+        $('st').textContent=`Scanning ${done}/${syms.length} • setups: ${out.length}`+(err?` • errors: ${err}`:'');
+        await sleep(400); // stay under Binance rate limit
+      }
+    };
+    await Promise.all(Array.from({length:5},worker));
+    results=out;
+    const t=new Date().toLocaleTimeString('en-PH',{timeZone:'Asia/Manila',hour:'2-digit',minute:'2-digit',second:'2-digit'});
+    $('st').textContent=`Done ${t} PHT • ${syms.length} coins • ${out.length} setups`+(skipped?` • putol-putol: ${skipped}`:'')+(err?` • ${err} errors (rate limit?)`:'');
+    notify();
+    render();
+  }catch(e){
+    $('st').textContent='Error: '+e.message+' — subukan ulit. Kung paulit-ulit, baka naka-block ang Binance sa network mo.';
+  }
+  scanning=false;$('go').disabled=false;
+}
+
+/* ---------- alerts ---------- */
+function beep(){
+  try{const a=new (window.AudioContext||window.webkitAudioContext)();const o=a.createOscillator(),g=a.createGain();
+  o.connect(g);g.connect(a.destination);o.frequency.value=880;g.gain.value=.15;o.start();o.stop(a.currentTime+.25)}catch(e){}
+}
+function notify(){
+  const keys=new Set(results.map(r=>r.sym+':'+r.stage+':'+r.setupI));
+  if(!firstRun&&$('alert').checked){
+    const fresh=results.filter(r=>(r.stage==='c'||r.stage==='d')&&!prevKeys.has(r.sym+':'+r.stage+':'+r.setupI));
+    if(fresh.length){beep();try{navigator.vibrate&&navigator.vibrate([200,100,200])}catch(e){}}
+  }
+  prevKeys=keys;firstRun=false;
+}
+
+/* ---------- render ---------- */
+const fp=v=>{const a=Math.abs(v);return v.toFixed(a>=100?2:a>=1?4:a>=0.01?6:8)};
+const tm=t=>new Date(t*1000).toLocaleTimeString('en-PH',{timeZone:'Asia/Manila',hour:'2-digit',minute:'2-digit'});
+const LBL={c:'CONFIRMED iFVG',d:'DEVELOPING',w:'WATCHING'};
+
+function render(){
+  const order={c:0,d:1,w:2};
+  const list=results.filter(r=>filter==='all'||r.stage===filter)
+    .sort((a,b)=>order[a.stage]-order[b.stage]||(a.stage==='d'?b.depth-a.depth:Math.abs(a.dist)-Math.abs(b.dist)));
+  document.querySelectorAll('.tab').forEach(t=>{
+    const f=t.dataset.f,n=f==='all'?results.length:results.filter(r=>r.stage===f).length;
+    t.textContent=t.textContent.replace(/ \(\d+\)$/,'')+` (${n})`;
+  });
+  if(!list.length){$('list').innerHTML='<div class="empty">Walang setup sa ngayon.</div>';return}
+  $('list').innerHTML=list.map(r=>{
+    const base=r.sym.replace('USDT','');
+    return `<div class="item ${r.stage}">
+      <div class="top"><a class="sym" target="_blank" rel="noopener" href="https://www.binance.com/en/futures/${r.sym}">${base}<span style="color:var(--mu);font-weight:400">/USDT</span></a>
+      <span class="badge ${r.stage}">${LBL[r.stage]}</span></div>
+      <div class="grid">
+        <div><span>Price</span><b>${fp(r.price)}</b></div>
+        <div><span>Daily bias</span><b style="color:${BC[r.bias]||'var(--mu)'}">${BL[r.bias]||'n/a'}</b></div>
+        <div><span>Swing High</span><b>${fp(r.lvl)}</b></div>
+        <div><span>FVG top</span><b>${fp(r.top)}</b></div>
+        <div><span>FVG bottom</span><b>${fp(r.bot)}</b></div>
+        <div><span>Distance</span><b>${r.dist.toFixed(2)}%</b></div>
+        <div><span>Depth sa FVG</span><b>${r.depth.toFixed(0)}%</b></div>
+        <div><span>Break candle</span><b>${tm(r.breakT)}</b></div>
+        ${r.entry?`<div><span>iFVG confirm</span><b>${tm(r.confT)}</b></div>
+        <div><span>Entry (ref)</span><b>${fp(r.entry)}</b></div>
+        <div><span>SL (above high)</span><b>${fp(r.sl)}</b></div>`:`<div><span>SL (kung mag-short)</span><b>${fp(r.sl)}</b></div>`}
+        <div><span>TP 1:4 (ref)</span><b>${fp(r.tp)}</b></div>
+      </div>
+      <div class="note">${r.note}</div>
+      <div class="links">
+        <a class="tv" target="_blank" rel="noopener" href="https://www.tradingview.com/chart/?symbol=BINANCE%3A${r.sym}.P&interval=5">📈 TradingView 5m</a>
+        <a target="_blank" rel="noopener" href="https://www.binance.com/en/futures/${r.sym}">Binance</a>
+      </div></div>`;
+  }).join('');
+}
+
+/* ---------- auto scan on 5m close ---------- */
+function schedule(){
+  clearTimeout(autoTimer);
+  if(!$('auto').checked)return;
+  const now=Date.now(),next=Math.ceil(now/300000)*300000+8000;
+  autoTimer=setTimeout(async()=>{await scan();schedule()},next-now);
+}
+
+$('go').onclick=()=>{scan()};
+$('auto').onchange=()=>{save();schedule()};
+$('alert').onchange=save;
+$('reqB').onchange=save;
+IDS.forEach(k=>$(k).onchange=save);
+document.querySelectorAll('.tab').forEach(t=>t.onclick=()=>{
+  document.querySelectorAll('.tab').forEach(x=>x.classList.remove('on'));
+  t.classList.add('on');filter=t.dataset.f;render();
+});
+schedule();
+</script>
+</body>
+</html>
