@@ -32,6 +32,7 @@ button:disabled{opacity:.5}
 .badge{font-size:11px;font-weight:700;padding:3px 8px;border-radius:12px}
 .badge.c{background:rgba(248,81,73,.15);color:var(--red)}
 .badge.d{background:rgba(210,153,34,.15);color:var(--yel)}
+.badge.v{background:rgba(163,113,247,.2);color:#a371f7;margin-right:6px}
 .badge.w{background:rgba(88,166,255,.15);color:var(--blu)}
 .grid{display:grid;grid-template-columns:1fr 1fr;gap:4px 12px;font-size:12px}
 .grid span{color:var(--mu)}
@@ -98,6 +99,7 @@ button:disabled{opacity:.5}
   <button class="tab" data-f="c">Confirmed</button>
   <button class="tab" data-f="d">Developing</button>
   <button class="tab" data-f="w">Watching</button>
+  <button class="tab" data-f="div">DIV</button>
 </div>
 <div id="list"><div class="empty">Pindutin ang Scan.</div></div>
 
@@ -142,6 +144,23 @@ function choppy(k){
   const c=k.slice(-101,-1);
   let flat=0;c.forEach(x=>{if(x.h===x.l||x.v===0)flat++});
   return flat/c.length>0.05;
+}
+
+/* ---------- RSI 14 (Wilder) ---------- */
+function rsi14(c,len=14){
+  const out=new Array(c.length).fill(null);
+  if(c.length<=len)return out;
+  let g=0,l=0;
+  for(let i=1;i<=len;i++){const d=c[i].c-c[i-1].c;if(d>=0)g+=d;else l-=d}
+  g/=len;l/=len;
+  out[len]=l===0?100:100-100/(1+g/l);
+  for(let i=len+1;i<c.length;i++){
+    const d=c[i].c-c[i-1].c;
+    g=(g*(len-1)+(d>0?d:0))/len;
+    l=(l*(len-1)+(d<0?-d:0))/len;
+    out[i]=l===0?100:100-100/(1+g/l);
+  }
+  return out;
 }
 
 /* ---------- strategy ---------- */
@@ -203,7 +222,13 @@ function analyze(k,cfg){
   let sl=Math.max(live.h,...c.slice(setup.i,endIdx+1).map(x=>x.h));
   const entry=conf!==null?c[conf].c:null;
   const h=setup.top-setup.bot;
+  const rs=rsi14(c);
+  let pk=setup.i;
+  for(let j=setup.i;j<=endIdx;j++){if(c[j].h>c[pk].h)pk=j}
+  const rA=rs[setup.swI],rB=rs[pk];
+  const div=rA!=null&&rB!=null&&c[pk].h>c[setup.swI].h&&rB<rA;   // bearish: HH sa price, LH sa RSI
   return{
+    div,rsiA:rA,rsiB:rB,pkT:c[pk].t,
     stage,note,price,bot:setup.bot,top:setup.top,lvl:setup.lvl,sl,entry,
     depth:price<setup.bot?100:price>setup.top?0:(setup.top-price)/h*100,
     dist:(price-setup.top)/price*100,
@@ -290,10 +315,10 @@ const LBL={c:'CONFIRMED iFVG',d:'DEVELOPING',w:'WATCHING'};
 
 function render(){
   const order={c:0,d:1,w:2};
-  const list=results.filter(r=>filter==='all'||r.stage===filter)
-    .sort((a,b)=>order[a.stage]-order[b.stage]||(a.stage==='d'?b.depth-a.depth:Math.abs(a.dist)-Math.abs(b.dist)));
+  const list=results.filter(r=>filter==='all'||(filter==='div'?r.div:r.stage===filter))
+    .sort((a,b)=>(b.div?1:0)-(a.div?1:0)||order[a.stage]-order[b.stage]||(a.stage==='d'?b.depth-a.depth:Math.abs(a.dist)-Math.abs(b.dist)));
   document.querySelectorAll('.tab').forEach(t=>{
-    const f=t.dataset.f,n=f==='all'?results.length:results.filter(r=>r.stage===f).length;
+    const f=t.dataset.f,n=f==='all'?results.length:f==='div'?results.filter(r=>r.div).length:results.filter(r=>r.stage===f).length;
     t.textContent=t.textContent.replace(/ \(\d+\)$/,'')+` (${n})`;
   });
   if(!list.length){$('list').innerHTML='<div class="empty">Walang setup sa ngayon.</div>';return}
@@ -301,7 +326,7 @@ function render(){
     const base=r.sym.replace('USDT','');
     return `<div class="item ${r.stage}">
       <div class="top"><a class="sym" target="_blank" rel="noopener" href="https://www.binance.com/en/futures/${r.sym}">${base}<span style="color:var(--mu);font-weight:400">/USDT</span></a>
-      <span class="badge ${r.stage}">${LBL[r.stage]}</span></div>
+      <span>${r.div?'<span class="badge v">DIV</span>':''}<span class="badge ${r.stage}">${LBL[r.stage]}</span></span></div>
       <div class="grid">
         <div><span>Price</span><b>${fp(r.price)}</b></div>
         <div><span>Daily bias</span><b style="color:${BC[r.bias]||'var(--mu)'}">${BL[r.bias]||'n/a'}</b></div>
@@ -315,6 +340,8 @@ function render(){
         <div><span>Entry (ref)</span><b>${fp(r.entry)}</b></div>
         <div><span>SL (above high)</span><b>${fp(r.sl)}</b></div>`:`<div><span>SL (kung mag-short)</span><b>${fp(r.sl)}</b></div>`}
         <div><span>TP 1:4 (ref)</span><b>${fp(r.tp)}</b></div>
+        <div><span>RSI14 (A→B)</span><b>${r.rsiA!=null?r.rsiA.toFixed(0):'-'} → ${r.rsiB!=null?r.rsiB.toFixed(0):'-'}</b></div>
+        <div><span>Divergence</span><b style="color:${r.div?'#a371f7':'var(--mu)'}">${r.div?'Bearish ✔':'Wala'}</b></div>
       </div>
       <div class="note">${r.note}</div>
       <div class="links">
